@@ -1,0 +1,51 @@
+{
+  "rev": 0,
+  "nodes": [
+    {
+      "id": "boat",
+      "kind": "ref",
+      "name": "帆船形态",
+      "src": "/demo/boat.jpg",
+      "x": 65,
+      "y": 40,
+      "prompt": ""
+    },
+    {
+      "id": "coast",
+      "kind": "ref",
+      "name": "海岸层次",
+      "src": "/demo/coast.jpg",
+      "x": 65,
+      "y": 236,
+      "prompt": ""
+    },
+    {
+      "id": "sun",
+      "kind": "ref",
+      "name": "落日色调",
+      "src": "/demo/sun.jpg",
+      "x": 65,
+      "y": 432,
+      "prompt": ""
+    },
+    {
+      "id": "sail",
+      "kind": "video",
+      "name": "落日航行",
+      "src": "/demo/sail.mp4",
+      "x": 500,
+      "y": 213,
+      "prompt": "A small sailboat glides slowly across a quiet sea at sunset. A steady wide shot, soft pastel light."
+    }
+  ],
+  "edges": [
+    [
+      "boat",
+      "sail"
+    ],
+    [
+      "coast",
+      "sail"
+    ]
+  ]
+}

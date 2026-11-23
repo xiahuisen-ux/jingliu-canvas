@@ -1,0 +1,68 @@
+{
+  "image": [
+    {
+      "label": "z_image_turbo_bf16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Z-Image-Turbo/blob/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+      "folder": "models/diffusion_models/",
+      "size": "12.31 GB"
+    },
+    {
+      "label": "qwen_3_4b.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Z-Image-Turbo/blob/main/split_files/text_encoders/qwen_3_4b.safetensors",
+      "folder": "models/text_encoders/",
+      "size": "8.04 GB"
+    },
+    {
+      "label": "ae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Z-Image-Turbo/blob/main/split_files/vae/ae.safetensors",
+      "folder": "models/vae/",
+      "size": "0.34 GB"
+    }
+  ],
+  "edit": [
+    {
+      "label": "qwen-image-edit-2511-Q5_K_M.gguf",
+      "url": "https://huggingface.co/unsloth/Qwen-Image-Edit-2511-GGUF/blob/main/qwen-image-edit-2511-Q5_K_M.gguf",
+      "folder": "models/diffusion_models/",
+      "size": "15.40 GB"
+    },
+    {
+      "label": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Qwen-Image/blob/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "folder": "models/text_encoders/",
+      "size": "9.38 GB"
+    },
+    {
+      "label": "qwen_image_vae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Qwen-Image/blob/main/split_files/vae/qwen_image_vae.safetensors",
+      "folder": "models/vae/",
+      "size": "0.25 GB"
+    },
+    {
+      "label": "Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors",
+      "url": "https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/blob/main/Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors",
+      "folder": "models/loras/",
+      "size": "0.85 GB"
+    }
+  ],
+  "video": [
+    {
+      "label": "MiniMax H3 · Ref2VA",
+      "url": "https://huggingface.co/MiniMaxAI/MiniMax-H3/tree/main/Ref2VA",
+      "folder": "选择包含 Ref2VA 的上一级目录",
+      "size": ""
+    },
+    {
+      "label": "h3.c · Metal 推理程序",
+      "url": "https://github.com/antirez/h3.c",
+      "folder": "按项目说明编译，选择生成的 h3 程序",
+      "size": ""
+    },
+    {
+      "label": "FFmpeg 与 FFprobe",
+      "url": "https://ffmpeg.org/download.html",
+      "folder": "两个程序均需可从 PATH 找到",
+      "size": ""
+    }
+  ]
+}
