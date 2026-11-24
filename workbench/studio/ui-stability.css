@@ -1,0 +1,19 @@
+/* Reserve scrollbar/media space; background polling never changes these boxes. */
+html,.workspace,.rail,.inspector,.chat-messages{scrollbar-gutter:stable}
+.workspace,.chat-messages{overflow-anchor:none;scroll-behavior:auto}
+.app-shell{min-height:0}
+.workspace,.rail,.inspector{min-height:0}
+.service-pills{flex-wrap:wrap;min-height:31px}
+.service-pill{white-space:nowrap}
+.runtime-message{min-height:19px;line-height:19px}
+.top-actions{min-width:0;align-content:start}
+.video-card>div,.shot-body>div{min-width:0}
+.video-card video,#finalCut video,.comparison-results video{display:block;width:100%;aspect-ratio:var(--video-aspect,16 / 9);object-fit:contain;background:#07090b}
+.video-card .frame{aspect-ratio:var(--video-aspect,16 / 9)}
+.video-card>.reference-warning,.video-card>.video-enhancements{grid-column:2 / -1}
+.video-card .shot-actions{flex-wrap:wrap}
+.production-progress [data-progress-message]{min-height:44px;max-height:44px;overflow:auto;overflow-wrap:anywhere}
+.production-progress [data-progress-eta],#jobPercent{font-variant-numeric:tabular-nums}
+.production-progress[hidden],.production-progress [hidden]{display:none}
+@media(prefers-reduced-motion:reduce){.progress i{transition:none}}
+@media(max-width:760px){.video-card>.reference-warning,.video-card>.video-enhancements{grid-column:1}}

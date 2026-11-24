@@ -1,0 +1,49 @@
+[
+  {
+    "url": "https://huggingface.co/TMElyralab/MuseTalk/resolve/main/musetalkV15/musetalk.json",
+    "destination": "source/models/musetalkV15/musetalk.json",
+    "size": 748,
+    "expected_sha256": null
+  },
+  {
+    "url": "https://huggingface.co/TMElyralab/MuseTalk/resolve/main/musetalkV15/unet.pth",
+    "destination": "source/models/musetalkV15/unet.pth",
+    "size": 3400074924,
+    "expected_sha256": "7ebf6c98c181e20838e4c0054e96e944ac60d5d692cc01db42839fe11b787007"
+  },
+  {
+    "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/main/config.json",
+    "destination": "source/models/sd-vae/config.json",
+    "size": 547,
+    "expected_sha256": null
+  },
+  {
+    "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/main/diffusion_pytorch_model.safetensors",
+    "destination": "source/models/sd-vae/diffusion_pytorch_model.safetensors",
+    "size": 334643276,
+    "expected_sha256": "a1d993488569e928462932c8c38a0760b874d166399b14414135bd9c42df5815"
+  },
+  {
+    "url": "https://huggingface.co/openai/whisper-tiny/resolve/main/config.json",
+    "destination": "source/models/whisper/config.json",
+    "size": 1983,
+    "expected_sha256": null
+  },
+  {
+    "url": "https://huggingface.co/openai/whisper-tiny/resolve/main/model.safetensors",
+    "destination": "source/models/whisper/model.safetensors",
+    "size": 151061672,
+    "expected_sha256": "7ebd0e69e78190ffe1438491fa05cc1f5c1aa3a4c4db3bc1723adbb551ea2395"
+  },
+  {
+    "url": "https://huggingface.co/openai/whisper-tiny/resolve/main/preprocessor_config.json",
+    "destination": "source/models/whisper/preprocessor_config.json",
+    "size": 184990,
+    "expected_sha256": null
+  },
+  {
+    "url": "https://download.pytorch.org/models/resnet18-5c106cde.pth",
+    "destination": "source/models/face-parse-bisent/resnet18-5c106cde.pth",
+    "expected_sha256_prefix": "5c106cde"
+  }
+]

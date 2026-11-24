@@ -1,0 +1,14 @@
+.production-progress{max-width:1120px;margin:0 auto 24px;padding:18px 20px;border:1px solid #71552f;border-radius:12px;background:#211d16;color:#f2eee6}
+.production-progress[hidden]{display:none}
+.production-heading{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.production-heading span,.production-progress b,.entity-live-progress{color:#ffd28a}
+.production-progress p{margin:9px 0;font-size:14px}
+.production-progress small{color:#ada495;display:block}
+.production-progress .progress{height:8px}
+.entity-live-progress{padding:6px 9px;background:#272117;border-radius:6px;font-size:13px}
+.asset-plan-dialog{width:min(760px,92vw);max-height:90vh;overflow:auto;padding:22px}
+.asset-plan-list{max-height:48vh;overflow:auto;margin-top:16px}
+.asset-plan-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 4px;border-bottom:1px solid #29313a}
+.asset-plan-row small{display:block;font-size:12px;color:#929ba6}
+.asset-plan-row select,.entity-editor select[data-field="reference_views"]{background:#10151b;color:#f2eee6;padding:8px;border:1px solid #39434e;border-radius:7px}
+.text-shot-body{padding:18px;display:grid;gap:12px}.text-shot-body>label{display:grid;gap:5px;color:#bcc4ce}.text-shot-body textarea,.text-shot-body input:not([type="checkbox"]){width:100%;background:#10151b;color:#eee;border:1px solid #39434e;border-radius:8px;padding:10px}.text-shot-body fieldset{border:1px solid #39434e;border-radius:8px}.task-elements{display:flex;gap:12px;flex-wrap:wrap}.task-elements label{font-size:13px}

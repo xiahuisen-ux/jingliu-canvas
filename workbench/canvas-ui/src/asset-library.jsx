@@ -1,0 +1,13 @@
+import React,{useState,useEffect} from 'react';
+import {createPortal} from 'react-dom';
+const categories=[['all','全部'],['characters','角色'],['locations','场景'],['videos','视频'],['images','图片'],['audio','音频']];
+export function AssetLibrary({c}){
+ const [category,setCategory]=useState('all'),[query,setQuery]=useState('');
+ const roles=c.library.flatMap(r=>r.appearances.map(a=>({id:r.id+':'+a.id,category:'characters',name:r.name+' · '+a.name,file:a.image,url:`/character-library-media/${r.id}/${a.image}`,role:r.id,appearance:a.id})));
+ const items=[...roles,...c.assetLibrary.map(a=>({...a,url:`/asset-library-media/${a.id}/${a.file}`}))].filter(a=>(category==='all'||a.category===category)&&a.name.toLowerCase().includes(query.toLowerCase()));
+ return <div className="asset-library"><p>本机资产库 · 选择素材，直接添加到当前画布。各工程的素材副本独立保留。</p><div className="asset-library-tabs" role="tablist" aria-label="资产分类">{categories.map(([id,label])=><button role="tab" aria-selected={id===category} className={id===category?'active':''} key={id} onClick={()=>setCategory(id)}>{label}</button>)}</div><input className="asset-search" aria-label="搜索资产" placeholder="搜索角色、场景或素材名称…" value={query} onChange={e=>setQuery(e.target.value)}/><div className="library-appearances">{items.map(a=><article key={a.id}>{a.category==='videos'?<video controls preload="metadata" src={a.url}/>:a.category==='audio'?<div className="library-audio"><span>♫</span><audio controls preload="metadata" src={a.url}/></div>:<img src={a.url} alt={a.name}/>}<strong>{a.name}</strong><small>{categories.find(([id])=>id===a.category)?.[1]}资产</small><button disabled={c.mutating} onClick={()=>a.role?c.useLibrary(a.role,a.appearance):c.useAsset(a.id)}>添加到画布</button></article>)}</div>{!items.length&&<div className="library-empty">暂无匹配素材。右键节点，选择“保存到资产库”。</div>}</div>;
+}
+export function NodeContextMenu({menu,n,c,onClose}){
+ useEffect(()=>{const close=e=>{if(!e.target.closest('.node-context-menu'))onClose()};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close)},[]);
+ return createPortal(<div className="node-context-menu" style={{left:Math.max(10,Math.min(menu.x,window.innerWidth-244)),top:Math.max(10,Math.min(menu.y,window.innerHeight-210))}} onContextMenu={e=>e.preventDefault()}><small>{n.item.name||n.item.title}</small><div role="menu" aria-label="节点操作"><button role="menuitem" disabled={c.mutating} onClick={()=>{onClose();c.copyNode(n)}}>⧉ 复制</button><button role="menuitem" disabled={c.mutating} onClick={()=>{onClose();c.saveAsset(n)}}>▣ 保存到资产库</button><button role="menuitem" disabled={c.mutating} onClick={()=>{onClose();c.deleteNode(n)}}>⌫ 删除</button></div><span>移出画布，可撤销；原文件与引用保留</span></div>,document.body);
+}

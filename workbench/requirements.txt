@@ -1,0 +1,4 @@
+Pillow>=10.4,<13
+imageio-ffmpeg==0.6.0
+legacy-cgi; python_version >= '3.13'
+standard-imghdr; python_version >= '3.13'

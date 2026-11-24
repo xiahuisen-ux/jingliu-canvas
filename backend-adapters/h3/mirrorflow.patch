@@ -1,0 +1,606 @@
+diff --git a/Makefile b/Makefile
+index bb20237..47b89dd 100644
+--- a/Makefile
++++ b/Makefile
+@@ -8,7 +8,7 @@ FRAMEWORKS := -framework Foundation -framework Metal \
+ 	-framework Accelerate
+ LDLIBS := $(FRAMEWORKS) -licucore -lm
+ 
+-LIB_C := h3.c h3_host.c h3_safetensors.c h3_weights.c h3_text_encoder.c \
++LIB_C := h3.c h3_refine.c h3_host.c h3_safetensors.c h3_weights.c h3_text_encoder.c \
+ 	h3_dit_schedule.c h3_dit.c
+ 
+ LIB_C += h3_video_vae.c h3_video_encoder.c h3_audio_vae.c h3_ffmpeg.c \
+@@ -19,7 +19,10 @@ CLI_OBJ := main.o h3_cli.o linenoise.o
+ 
+ .PHONY: all test parity real-parity clean
+ 
+-all: h3 libh3.a
++all: h3 h3-worker libh3.a
++
++h3-worker: h3_worker.o $(LIB_OBJ)
++	$(CC) -o $@ $^ $(LDLIBS)
+ 
+ h3: $(CLI_OBJ) $(LIB_OBJ)
+ 	$(CC) -o $@ $^ $(LDLIBS)
+@@ -203,7 +206,7 @@ linenoise.o: CFLAGS += -Wno-conversion -Wno-variadic-macro-arguments-omitted
+ -include $(wildcard *.d tests/*.d)
+ 
+ clean:
+-	rm -f h3 h3_tests h3_metal_tests h3_bf16_tests h3_tokenizer_tests \
++	rm -f h3 h3-worker h3_tests h3_metal_tests h3_bf16_tests h3_tokenizer_tests \
+ 		h3_text_tests h3_real_prompt_test h3_real_dit_block_test \
+ 		h3_audio_gpu_tests h3_real_audio_vae_test h3_real_audio_encoder_test \
+ 		h3_av_mux_test \
+diff --git a/h3.c b/h3.c
+index d5dca25..0712a68 100644
+--- a/h3.c
++++ b/h3.c
+@@ -9,6 +9,7 @@
+ #include "h3_text_encoder.h"
+ #include "h3_tokenizer.h"
+ #include "h3_video_encoder.h"
++#include "h3_refine.h"
+ #include "h3_video_vae.h"
+ #include "h3_vision_encoder.h"
+ 
+@@ -143,9 +144,9 @@ static char *h3_conditioning_key(const char *prompt, const h3_params *params,
+     if (!h3_key_append(&key, "mode=%d|prompt=%zu:%s", ref2va,
+                        strlen(prompt), prompt)) goto failed;
+     if (!ref2va && !params->first_frame && !params->last_frame) return key.text;
+-    if (!h3_key_append(&key, "|render=%dx%d|frames=%d|image-size=%d",
++    if (!h3_key_append(&key, "|render=%dx%d|frames=%d|image-size=%d|ref-video-cap=%d",
+                        render_width, render_height, params->frames,
+-                       params->reference_image_size) ||
++                       params->reference_image_size, params->reference_video_max_pixels) ||
+         !h3_key_file(&key, "first", params->first_frame) ||
+         !h3_key_file(&key, "last", params->last_frame)) goto failed;
+     for (size_t index = 0; index < params->reference_count; index++) {
+@@ -188,6 +189,8 @@ static char *h3_prepared_key(const char *conditioning,
+         free(key.text);
+         return NULL;
+     }
++    if (!h3_key_append(&key, "|refine=%d:%.9g", params->refine_video != NULL,
++                       (double)params->refine_denoise)) {free(key.text); return NULL;}
+     return key.text;
+ }
+ 
+@@ -519,6 +522,19 @@ static int h3_valid_params(h3_ctx *ctx, const h3_params *params) {
+         h3_set_error(ctx, "denoising steps must be in [2, 1000]");
+         return 0;
+     }
++    if (params->refine_video && (!*params->refine_video ||
++        !isfinite(params->refine_denoise) || params->refine_denoise < 0.01f ||
++        params->refine_denoise > 0.15f || params->steps > 50)) {
++        h3_set_error(ctx, "refinement requires a source and denoise in [0.01, 0.15]");
++        return 0;
++    }
++    if (params->reference_video_max_pixels < 0 ||
++        (params->reference_video_max_pixels &&
++         (params->reference_video_max_pixels < 1024 ||
++          params->reference_video_max_pixels > H3_MAX_PIXELS))) {
++        h3_set_error(ctx, "reference video pixel cap must be 0 or in [1024, 1032192]");
++        return 0;
++    }
+     if (params->denoise_reuse < 1 || params->denoise_reuse > 3) {
+         h3_set_error(ctx, "denoise reuse must be in [1, 3]");
+         return 0;
+@@ -905,6 +921,7 @@ h3_result *h3_generate(h3_ctx *ctx, const char *prompt,
+     h3_live_preview live_preview;
+     memset(&live_preview, 0, sizeof(live_preview));
+     float *video = NULL, *audio = NULL;
++    h3_video_latent refine_latent = {0};
+     h3_video_frames frames;
+     memset(&frames, 0, sizeof(frames));
+     h3_audio_waveform waveform;
+@@ -1061,13 +1078,16 @@ h3_result *h3_generate(h3_ctx *ctx, const char *prompt,
+                 presentations[index].vision_count = 1;
+                 vision_output_count++;
+             } else {
+-                if (!h3_reference_video_canvas(
+-                        source_width, source_height,
++                if (!h3_reference_video_canvas_capped(
++                        source_width, source_height, params->reference_video_max_pixels,
+                         &media_width, &media_height)) {
+                     h3_set_error(ctx,
+                         "cannot resolve reference video %zu canvas", index + 1);
+                     goto cleanup;
+                 }
++                fprintf(stderr, "h3: reference video %zu canvas %dx%d -> %dx%d (pixel cap %d)\n",
++                        index + 1, source_width, source_height, media_width, media_height,
++                        params->reference_video_max_pixels);
+                 if (!h3_ffmpeg_read_video_f32(
+                         reference->path, media_width, media_height,
+                         temporal.frame_count, &condition_pixels[visual_count],
+@@ -1456,7 +1476,15 @@ h3_result *h3_generate(h3_ctx *ctx, const char *prompt,
+         goto cleanup;
+     }
+     h3_sigma_schedule sigmas;
+-    if (!h3_serving_schedule_build(params->steps, &sigmas)) {
++    if (params->refine_video && !h3_refine_encode(vae_path, params->refine_video,
++            render_width, render_height, temporal.frame_count,
++            h3_video_encoder_progress_bridge, &progress, &refine_latent,
++            detail, sizeof(detail))) {
++        h3_set_error(ctx, "%s", detail);
++        goto cleanup;
++    }
++    if (!(params->refine_video ? h3_refine_schedule(params->steps, params->refine_denoise, &sigmas) :
++                                h3_serving_schedule_build(params->steps, &sigmas))) {
+         h3_set_error(ctx, "cannot construct the requested sigma schedule");
+         goto cleanup;
+     }
+@@ -1573,6 +1601,18 @@ h3_result *h3_generate(h3_ctx *ctx, const char *prompt,
+     h3_rng_seed(&audio_rng, params->seed);
+     h3_rng_fill_normal(&video_rng, video, video_count);
+     h3_rng_fill_normal(&audio_rng, audio, audio_count);
++    if (refine_latent.values) {
++        size_t count = 24 * (size_t)refine_latent.time *
++                       (size_t)refine_latent.height * (size_t)refine_latent.width;
++        if (count != video_count) {
++            h3_set_error(ctx, "refinement latent and target geometry differ");
++            goto cleanup;
++        }
++        float sigma = sigmas.video[0];
++        for (size_t i = 0; i < count; i++)
++            video[i] = (1.0f - sigma) * refine_latent.values[i] + sigma * video[i];
++        h3_video_latent_free(&refine_latent);
++    }
+     if (!h3_dit_denoise_euler_preview(
+             dit, video, audio, params->denoise_reuse,
+             h3_dit_progress_bridge, &progress,
+@@ -1690,6 +1730,7 @@ h3_result *h3_generate(h3_ctx *ctx, const char *prompt,
+     result->seed = params->seed;
+ 
+ cleanup:
++    h3_video_latent_free(&refine_latent);
+     free(conditioning_key);
+     free(prepared_key);
+     free(decoder_key);
+diff --git a/h3.h b/h3.h
+index 29640b3..e379bf0 100644
+--- a/h3.h
++++ b/h3.h
+@@ -126,12 +126,17 @@ typedef struct {
+     h3_frame_callback on_frame;
+     h3_progress_callback on_progress;
+     void *callback_opaque;
++    /* Optional source video for low-noise refinement, never a reference input. */
++    const char *refine_video;
++    float refine_denoise;
++    /* Local workbench cap for reference-video pixels only; 0 keeps upstream sizing. */
++    int reference_video_max_pixels;
+ } h3_params;
+ 
+ #define H3_PARAMS_DEFAULT { \
+     H3_DEFAULT_WIDTH, H3_DEFAULT_HEIGHT, H3_DEFAULT_FRAMES, H3_DEFAULT_STEPS, \
+     UINT64_C(42), NULL, NULL, NULL, NULL, 0, H3_REFERENCE_IMAGE_MATCH, \
+-    1, H3_DEFAULT_DIT_LAYERS, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, NULL \
++    1, H3_DEFAULT_DIT_LAYERS, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, NULL, NULL, 0.0f, 0 \
+ }
+ 
+ typedef struct {
+diff --git a/h3_dit.c b/h3_dit.c
+index 667e49b..c161df5 100644
+--- a/h3_dit.c
++++ b/h3_dit.c
+@@ -2296,6 +2296,13 @@ static int encode_forward(h3_dit *dit, int step, int begin, int submit,
+                 }
+                 dit->stream_ready_layer = stream_job.layer;
+                 dit->stream_ready_slot = stream_job.slot;
++                /* Report completed GPU work, not merely encoded commands. */
++                if (getenv("H3_PROFILE")) {
++                    fprintf(stderr, "\rh3 denoise step %d/%d block %u/%u complete\n",
++                            step + 1, dit->sigmas.steps, completed_blocks,
++                            dit->active_block_count);
++                    fflush(stderr);
++                }
+                 OP(h3_gpu_begin(dit->gpu),
+                    "continue after streamed DiT block");
+             }
+diff --git a/h3_host.c b/h3_host.c
+index a04a2a0..ea7e954 100644
+--- a/h3_host.c
++++ b/h3_host.c
+@@ -114,6 +114,29 @@ int h3_reference_video_canvas(int width, int height,
+     return 1;
+ }
+ 
++int h3_reference_video_canvas_capped(int width, int height, int max_pixels,
++                                     int *adapted_w, int *adapted_h) {
++    if (max_pixels < 0 || (max_pixels &&
++        (max_pixels < 32 * 32 || max_pixels > H3_MAX_PIXELS)) ||
++        !h3_reference_video_canvas(width, height, adapted_w, adapted_h)) return 0;
++    if (!max_pixels || (double)*adapted_w * *adapted_h <= max_pixels) return 1;
++    double scale = fmin(1.0, sqrt((double)max_pixels / ((double)width * height)));
++    int w = (int)fmax(32.0, nearbyint(width * scale / 32.0) * 32.0);
++    int h = (int)fmax(32.0, nearbyint(height * scale / 32.0) * 32.0);
++    int max_axis = (max_pixels / (32 * 32)) * 32;
++    if (w > max_axis) w = max_axis;
++    if (h > max_axis) h = max_axis;
++    /* Grid rounding must not silently exceed the memory budget. */
++    while ((double)w * h > max_pixels) {
++        if (w >= h && w > 32) w -= 32;
++        else if (h > 32) h -= 32;
++        else return 0;
++    }
++    *adapted_w = w;
++    *adapted_h = h;
++    return 1;
++}
++
+ double h3_time_shift_sigma(double sigma, double from_shift, double to_shift) {
+     double base = sigma / (from_shift + sigma * (1.0 - from_shift));
+     return to_shift * base / (1.0 + (to_shift - 1.0) * base);
+diff --git a/h3_host.h b/h3_host.h
+index f71eded..9986621 100644
+--- a/h3_host.h
++++ b/h3_host.h
+@@ -108,6 +108,8 @@ int h3_reference_image_canvas(int width, int height,
+  * smaller source is never enlarged. */
+ int h3_reference_video_canvas(int width, int height,
+                               int *adapted_w, int *adapted_h);
++int h3_reference_video_canvas_capped(int width, int height, int max_pixels,
++                                     int *adapted_w, int *adapted_h);
+ 
+ double h3_time_shift_sigma(double sigma, double from_shift, double to_shift);
+ double h3_time_shift_slope(double sigma, double from_shift, double to_shift);
+diff --git a/main.c b/main.c
+index 7f11e47..7b440c9 100644
+--- a/main.c
++++ b/main.c
+@@ -51,6 +51,7 @@ static void usage(const char *program) {
+         "      --ref-image PATH    Append an ordered Ref2VA image\n"
+         "      --ref-image-size S  Image sizing: match (default) or max\n"
+         "      --ref-video PATH    Append video, including embedded audio\n"
++        "      --ref-video-max-pixels N  Reference video area cap; 0 = upstream default\n"
+         "      --ref-silent-video PATH  Append video without its audio\n"
+         "      --ref-video-audio VIDEO AUDIO  Append video + soundtrack\n"
+         "      --ref-audio PATH    Append an ordered standalone audio clip\n"
+@@ -249,7 +250,7 @@ int main(int argc, char **argv) {
+            OPT_USE_SLOWER_GROUPED_QUANTIZER,
+            OPT_SEED,
+            OPT_FIRST, OPT_LAST, OPT_REF_IMAGE, OPT_REF_IMAGE_SIZE,
+-           OPT_REF_VIDEO, OPT_REF_SILENT_VIDEO, OPT_REF_VIDEO_AUDIO,
++           OPT_REF_VIDEO, OPT_REF_SILENT_VIDEO, OPT_REF_VIDEO_AUDIO, OPT_REF_VIDEO_MAX_PIXELS,
+            OPT_REF_AUDIO, OPT_FRAMES_DIR, OPT_SHOW, OPT_ZOOM,
+            OPT_PROFILE, OPT_INFO };
+     static const struct option options[] = {
+@@ -296,6 +297,7 @@ int main(int argc, char **argv) {
+         {"ref-image", required_argument, NULL, OPT_REF_IMAGE},
+         {"ref-image-size", required_argument, NULL, OPT_REF_IMAGE_SIZE},
+         {"ref-video", required_argument, NULL, OPT_REF_VIDEO},
++        {"ref-video-max-pixels", required_argument, NULL, OPT_REF_VIDEO_MAX_PIXELS},
+         {"ref-silent-video", required_argument, NULL, OPT_REF_SILENT_VIDEO},
+         {"ref-video-audio", required_argument, NULL, OPT_REF_VIDEO_AUDIO},
+         {"ref-audio", required_argument, NULL, OPT_REF_AUDIO},
+@@ -415,6 +417,9 @@ int main(int argc, char **argv) {
+                     return 2;
+                 }
+                 break;
++            case OPT_REF_VIDEO_MAX_PIXELS:
++                params.reference_video_max_pixels = parse_int(optarg, "reference video pixel cap");
++                break;
+             case OPT_REF_VIDEO: {
+                 h3_reference *reference = append_reference(
+                     references, &reference_count);
+diff --git a/h3_refine.c b/h3_refine.c
+new file mode 100644
+index 0000000..6d7c128
+--- /dev/null
++++ b/h3_refine.c
+@@ -0,0 +1,79 @@
++/* FaceRefine's video seed + truncated scheduler, for the native Metal engine.
++ * Temporal packing follows comfy/ldm/minimax/vae.py: 17-frame clips, pad the
++ * last clip, concatenate five latents per clip, then drop the last three. */
++#include "h3_refine.h"
++#include "h3_ffmpeg.h"
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++int h3_refine_schedule(int steps, float strength, h3_sigma_schedule *schedule) {
++    if (!schedule || steps < 2 || steps > 50 || !isfinite(strength) ||
++        strength < 0.01f || strength > 0.15f) return 0;
++    int total = (int)ceil((double)steps / strength);
++    /* Build the discarded prefix algebraically, without a 5,000-step buffer.
++     * Audio keeps the full serving grid; the real track is an ordered reference
++     * and is copied back by the compositor, not regenerated in the output. */
++    if (!h3_serving_schedule_build(steps, schedule)) return 0;
++    for (int i = 0; i <= steps; i++) {
++        float base = (float)(steps - i) / (float)total;
++        schedule->video[i] = (float)H3_VIDEO_SIGMA_SHIFT * base /
++            (1.0f + ((float)H3_VIDEO_SIGMA_SHIFT - 1.0f) * base);
++    }
++    return 1;
++}
++
++int h3_refine_encode(const char *vae, const char *source, int width, int height,
++                     int frames, h3_video_encoder_progress progress, void *opaque,
++                     h3_video_latent *output, char *error, size_t error_size) {
++    float *pixels = NULL;
++    int actual = 0;
++    memset(output, 0, sizeof(*output));
++    if (!h3_ffmpeg_read_video_f32(source, width, height, frames, &pixels,
++                                  &actual, error, error_size)) return 0;
++    if (actual != frames) {
++        snprintf(error, error_size, "refinement source must contain exactly %d aligned frames (got %d)", frames, actual);
++        free(pixels); return 0;
++    }
++    size_t area = (size_t)width * (size_t)height;
++    size_t latent_area = area / 256;
++    int chunks = (frames + 16) / 17;
++    int target_t = chunks * 5 - 3;
++    float *values = calloc(24 * (size_t)target_t * latent_area, sizeof(float));
++    float *clip = malloc(3 * 17 * area * sizeof(float));
++    int ok = values && clip;
++    if (!ok) snprintf(error, error_size, "out of memory staging refinement video");
++    for (int index = 0; ok && index < chunks; index++) {
++        for (int c = 0; c < 3; c++)
++            for (int t = 0; t < 17; t++) {
++                int frame = index * 17 + t;
++                if (frame >= frames) frame = frames - 1;
++                memcpy(clip + ((size_t)c * 17 + (size_t)t) * area,
++                       pixels + ((size_t)c * (size_t)frames + (size_t)frame) * area,
++                       area * sizeof(float));
++            }
++        h3_video_latent part = {0};
++        ok = h3_video_vae_encode(vae, "h3_shaders.metal", clip, 17, height,
++                                 width, NULL, NULL, &part, error, error_size);
++        if (ok && (part.time != 5 || part.height != height/16 || part.width != width/16)) {
++            snprintf(error, error_size, "refinement VAE produced unexpected geometry");
++            ok = 0;
++        }
++        if (ok)
++            for (int c = 0; c < 24; c++) {
++                int count = target_t - index * 5;
++                if (count > 5) count = 5;
++                memcpy(values + ((size_t)c * (size_t)target_t + (size_t)index * 5) * latent_area,
++                       part.values + (size_t)c * 5 * latent_area,
++                       (size_t)count * latent_area * sizeof(float));
++            }
++        h3_video_latent_free(&part);
++        if (ok && progress) progress(index + 1, chunks, opaque);
++    }
++    free(pixels); free(clip);
++    if (!ok) {free(values); return 0;}
++    output->values = values; output->time = target_t;
++    output->height = height / 16; output->width = width / 16;
++    return 1;
++}
+diff --git a/h3_refine.h b/h3_refine.h
+new file mode 100644
+index 0000000..d781955
+--- /dev/null
++++ b/h3_refine.h
+@@ -0,0 +1,9 @@
++#ifndef H3_REFINE_H
++#define H3_REFINE_H
++#include "h3_host.h"
++#include "h3_video_encoder.h"
++int h3_refine_schedule(int steps, float strength, h3_sigma_schedule *schedule);
++int h3_refine_encode(const char *vae, const char *source, int width, int height,
++                     int frames, h3_video_encoder_progress progress, void *opaque,
++                     h3_video_latent *output, char *error, size_t error_size);
++#endif
+diff --git a/h3_worker.m b/h3_worker.m
+new file mode 100644
+index 0000000..62dc79f
+--- /dev/null
++++ b/h3_worker.m
+@@ -0,0 +1,215 @@
++/* Local JSON-lines transport for the existing h3.c cache API.
++ * stdout/stderr share one ordered pipe; only prefixed JSON is protocol data.
++ * No weights are loaded until a validated generate request arrives. */
++#import <Foundation/Foundation.h>
++#include "h3.h"
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++
++#define REQUEST_LIMIT (1024 * 1024)
++
++static void emit(NSDictionary *event) {
++    NSData *data = [NSJSONSerialization dataWithJSONObject:event options:0 error:NULL];
++    fputs("@h3-worker@", stdout);
++    fwrite(data.bytes, 1, data.length, stdout);
++    fputc('\n', stdout);
++    fflush(stdout);
++}
++
++static NSDictionary *cache_info(h3_ctx *ctx) {
++    h3_cache_info info;
++    h3_cache_get_info(ctx, &info);
++    return @{ @"embedding_entries": @(info.embedding_entries),
++              @"embedding_bytes": @(info.embedding_bytes),
++              @"prepared_dit": @(info.prepared_dit),
++              @"video_decoder": @(info.video_decoder) };
++}
++
++static BOOL string_value(id value, BOOL required) {
++    return [value isKindOfClass:NSString.class] && (!required || [value length]) &&
++        [value rangeOfString:[NSString stringWithFormat:@"%C", (unichar)0]].location == NSNotFound;
++}
++
++static BOOL number_value(id value, double low, double high, BOOL integer) {
++    if (![value isKindOfClass:NSNumber.class] ||
++        CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()) return NO;
++    double n = [value doubleValue];
++    return isfinite(n) && n >= low && n <= high && (!integer || floor(n) == n);
++}
++
++static NSString *parse_request(NSDictionary *request, h3_params *params,
++                               h3_reference refs[12]) {
++    if (!string_value(request[@"prompt"], YES) ||
++        !string_value(request[@"output"], YES)) return @"prompt/output must be nonempty strings without NUL";
++    if (![request[@"output"] isAbsolutePath]) return @"output must be absolute";
++    if (!number_value(request[@"width"], 32, 1344, YES) ||
++        !number_value(request[@"height"], 32, 1344, YES) ||
++        !number_value(request[@"seconds"], 0.5, 15, NO) ||
++        !number_value(request[@"steps"], 4, 50, YES) ||
++        !number_value(request[@"seed"], 0, 9007199254740991.0, YES)) return @"invalid generation parameters";
++    params->width = [request[@"width"] intValue];
++    params->height = [request[@"height"] intValue];
++    if (params->width % 32 || params->height % 32 ||
++        params->width * params->height > 768 * 1344) return @"invalid canvas";
++    params->frames = (int)llround([request[@"seconds"] doubleValue] * 24.0);
++    params->steps = [request[@"steps"] intValue];
++    if (request[@"layers"]) {
++        if (!number_value(request[@"layers"], 45, 50, YES) ||
++            ![@[@45, @50] containsObject:request[@"layers"]]) return @"layers must be 45 or 50";
++        params->dit_layers = [request[@"layers"] intValue];
++    }
++    if (request[@"reuse"]) {
++        if (!number_value(request[@"reuse"], 1, 2, YES)) return @"reuse must be 1 or 2";
++        params->denoise_reuse = [request[@"reuse"] intValue];
++    }
++    if (params->steps < 8 && params->denoise_reuse > 1) return @"4-7 steps require reuse 1";
++    if (request[@"reference_video_max_pixels"]) {
++        id cap = request[@"reference_video_max_pixels"];
++        if (!number_value(cap, 0, 589824, YES) ||
++            ![@[@0, @147456, @358400, @589824] containsObject:cap]) return @"invalid reference video cap";
++        params->reference_video_max_pixels = [cap intValue];
++    }
++    params->seed = [request[@"seed"] unsignedLongLongValue];
++    params->output_path = [request[@"output"] UTF8String];
++    if (![request[@"ssd_streaming"] isKindOfClass:NSNumber.class] ||
++        CFGetTypeID((__bridge CFTypeRef)request[@"ssd_streaming"]) != CFBooleanGetTypeID())
++        return @"ssd_streaming must be boolean";
++    params->ssd_streaming = [request[@"ssd_streaming"] boolValue];
++    id refine = request[@"refine_source"];
++    if (refine && refine != NSNull.null) {
++        if (!string_value(refine, YES) || ![refine isAbsolutePath] ||
++            !number_value(request[@"refine_denoise"], 0.01, 0.15, NO))
++            return @"invalid refinement source/denoise";
++        params->refine_video = [refine UTF8String];
++        params->refine_denoise = [request[@"refine_denoise"] floatValue];
++    }
++    for (NSString *name in @[@"first_frame", @"last_frame"]) {
++        id path = request[name];
++        if (!path || path == NSNull.null) continue;
++        if (!string_value(path, YES) || ![path isAbsolutePath]) return @"invalid anchor path";
++        if ([name isEqualToString:@"first_frame"]) params->first_frame = [path UTF8String];
++        else params->last_frame = [path UTF8String];
++    }
++    NSArray *references = request[@"references"];
++    if (![references isKindOfClass:NSArray.class] || references.count > 12) return @"invalid references";
++    if (references.count && (params->first_frame || params->last_frame)) return @"anchors and references cannot be combined";
++    for (NSUInteger index = 0; index < references.count; index++) {
++        id ref = references[index];
++        if (![ref isKindOfClass:NSDictionary.class] || !string_value(ref[@"path"], YES) ||
++            ![ref[@"path"] isAbsolutePath]) return @"invalid reference path";
++        NSString *kind = ref[@"kind"];
++        if (![kind isKindOfClass:NSString.class]) return @"invalid reference kind";
++        if ([kind isEqualToString:@"image"]) refs[index].kind = H3_REFERENCE_IMAGE;
++        else if ([kind isEqualToString:@"audio"]) refs[index].kind = H3_REFERENCE_AUDIO;
++        else if ([kind isEqualToString:@"video"] || [kind isEqualToString:@"silent_video"]) {
++            refs[index].kind = H3_REFERENCE_VIDEO;
++            refs[index].include_embedded_audio = [kind isEqualToString:@"video"];
++        } else return @"unsupported reference kind";
++        refs[index].path = [ref[@"path"] UTF8String];
++    }
++    params->references = refs;
++    params->reference_count = references.count;
++    return nil;
++}
++
++static int progress(const char *phase, int completed, int total, void *opaque) {
++    NSString *request_id = (__bridge NSString *)opaque;
++    emit(@{@"event": @"progress", @"id": request_id,
++           @"phase": [NSString stringWithUTF8String:phase],
++           @"completed": @(completed), @"total": @(total)});
++    return 0;
++}
++
++int main(int argc, char **argv) {
++    @autoreleasepool {
++        BOOL validate_only = argc == 2 && !strcmp(argv[1], "--validate");
++        if (argc != 2) {
++            fprintf(stderr, "Usage: h3-worker MODEL_DIR | --validate\n");
++            return 2;
++        }
++        setvbuf(stdout, NULL, _IONBF, 0);
++        setvbuf(stderr, NULL, _IONBF, 0);
++        setenv("H3_PROFILE", "1", 1);
++        h3_ctx *ctx = NULL;
++        emit(@{@"event": @"ready", @"protocol": @1, @"pid": @(getpid()), @"validate_only": @(validate_only),
++               @"features": @[@"face_refine", @"performance_controls_v1"]});
++        /* fgets bounds malformed/oversized input before any allocation or model load. */
++        char *line = malloc(REQUEST_LIMIT + 2);
++        if (!line) return 1;
++        while (fgets(line, REQUEST_LIMIT + 2, stdin)) {
++            @autoreleasepool {
++                size_t length = strlen(line);
++                if (length > REQUEST_LIMIT || !length || line[length - 1] != '\n') {
++                    emit(@{@"event": @"error", @"id": NSNull.null, @"message": @"request too large or incomplete"});
++                    break;
++                }
++                NSData *data = [NSData dataWithBytes:line length:length];
++                id request = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
++                if (![request isKindOfClass:NSDictionary.class] || !string_value(request[@"id"], YES)) {
++                    emit(@{@"event": @"error", @"id": NSNull.null, @"message": @"invalid request/id"});
++                    continue;
++                }
++                NSString *request_id = request[@"id"];
++                id command = request[@"command"];
++                if (![command isKindOfClass:NSString.class]) command = @"";
++                if ([command isEqualToString:@"quit"]) break;
++                if ([command isEqualToString:@"inspect"] || [command isEqualToString:@"clear"]) {
++                    if ([command isEqualToString:@"clear"]) h3_cache_clear(ctx);
++                    emit(@{@"event": @"cache", @"id": request_id, @"cache": cache_info(ctx)});
++                    continue;
++                }
++                h3_params params = H3_PARAMS_DEFAULT;
++                h3_reference refs[12] = {0};
++                NSString *error = [command isEqualToString:@"generate"] ?
++                    parse_request(request, &params, refs) : @"unknown command";
++                if (error) {
++                    emit(@{@"event": @"error", @"id": request_id, @"message": error});
++                    continue;
++                }
++                if (validate_only) {
++                    emit(@{@"event": @"validated", @"id": request_id, @"frames": @(params.frames),
++                           @"reference_count": @(params.reference_count), @"layers": @(params.dit_layers),
++                           @"reuse": @(params.denoise_reuse), @"ssd_streaming": @(params.ssd_streaming),
++                           @"reference_video_max_pixels": @(params.reference_video_max_pixels),
++                           @"refine": @(params.refine_video != NULL), @"refine_denoise": @(params.refine_denoise)});
++                    continue;
++                }
++                if ([[NSFileManager defaultManager] fileExistsAtPath:request[@"output"]]) {
++                    emit(@{@"event": @"error", @"id": request_id, @"message": @"output already exists"});
++                    continue;
++                }
++                if (!ctx) {
++                    ctx = h3_load_dir(argv[1]);
++                    if (ctx) h3_cache_set_enabled(ctx, 1);
++                }
++                if (!ctx) {
++                    emit(@{@"event": @"error", @"id": request_id,
++                           @"message": [NSString stringWithUTF8String:h3_last_error(NULL)]});
++                    continue;
++                }
++                if ([request[@"clear_cache"] isEqual:@YES]) h3_cache_clear(ctx);
++                params.on_progress = progress;
++                params.callback_opaque = (__bridge void *)request_id;
++                fprintf(stderr, "h3: workbench settings steps=%d layers=%d reuse=%d reference_video_max_pixels=%d ssd_streaming=%d\n",
++                        params.steps, params.dit_layers, params.denoise_reuse,
++                        params.reference_video_max_pixels, params.ssd_streaming);
++                h3_result *result = h3_generate(ctx, [request[@"prompt"] UTF8String], &params);
++                if (!result) {
++                    NSString *message = [NSString stringWithUTF8String:h3_last_error(ctx)];
++                    h3_cache_clear(ctx);
++                    emit(@{@"event": @"error", @"id": request_id, @"message": message});
++                } else {
++                    emit(@{@"event": @"done", @"id": request_id, @"output": request[@"output"],
++                           @"frames": @(result->frames), @"cache": cache_info(ctx)});
++                    h3_result_free(result);
++                }
++            }
++        }
++        free(line);
++        h3_free(ctx);
++    }
++    return 0;
++}

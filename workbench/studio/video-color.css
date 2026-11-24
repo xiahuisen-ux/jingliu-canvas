@@ -1,0 +1,14 @@
+.color-match{border:1px solid #3b4d67;border-radius:12px;background:#131c27;margin:18px 0 22px}
+.color-match>summary{padding:16px;cursor:pointer;font-weight:600}.color-match summary small{font-weight:400;color:var(--muted);margin-left:10px}
+.color-match-body{padding:0 16px 16px}.color-main-controls{display:grid;grid-template-columns:minmax(0,2fr) minmax(120px,1fr);gap:18px;align-items:center}
+.color-match label{display:block;font-size:13px;color:var(--muted)}.color-match select,.color-match input[type=number]{width:100%;margin-top:7px;background:#0e141c;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:9px;font:inherit;min-width:0;color-scheme:dark}
+.color-match select:disabled{opacity:.55}
+.color-match input[type=range]{width:100%;accent-color:#4b83da}.color-match output{float:right;color:#fff}
+.color-target-heading{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:18px 0 10px;font-size:14px}.color-target-heading strong{margin-right:auto}
+.color-targets{display:grid;gap:8px}.color-target{display:flex;gap:12px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:10px}
+.color-target label{display:flex;align-items:center;gap:8px;flex:1;color:var(--text)}.color-target select{width:150px;margin:0}.color-match input[type=checkbox]{width:17px;height:17px;accent-color:#4b83da;flex-shrink:0}
+.color-reference-preview,.color-fine{margin:14px 0;font-size:13px;color:var(--muted)}.color-reference-preview summary,.color-fine summary{cursor:pointer}.color-reference-preview video{display:block;width:100%;max-height:260px;margin-top:10px}
+.color-fine>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px}
+.color-match .color-auto-select{display:flex;align-items:center;gap:8px;margin:16px 0;color:var(--text)}.color-match .muted{font-size:13px;line-height:1.6}
+.color-version-badge{display:block;margin-top:8px;font-size:12px;color:#a8c9ff}
+@media(max-width:760px){.color-main-controls{grid-template-columns:1fr}.color-target{flex-wrap:wrap}.color-target select{width:100%}.color-target-heading .ghost{font-size:12px}.color-fine>div{grid-template-columns:1fr}}

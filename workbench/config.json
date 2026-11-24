@@ -1,0 +1,20 @@
+{
+  "ollama_url": "http://127.0.0.1:11434",
+  "ollama_model": "qwen3:8b",
+  "qwen_image_url": "http://127.0.0.1:8188",
+  "qwen_image_root": "Qwen-Image/ComfyUI",
+  "qwen_image_python": "Qwen-Image/ComfyUI/venv/bin/python",
+  "image_backend": "z_image",
+  "z_image": {
+    "diffusion_model": "z_image_turbo_bf16.safetensors",
+    "text_encoder": "qwen_3_4b.safetensors",
+    "vae": "ae.safetensors"
+  },
+  "qwen_image": {
+    "diffusion_model": "qwen-image-2512-Q5_K_M.gguf",
+    "text_encoder": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+    "vae": "qwen_image_vae.safetensors",
+    "lora": "Qwen-Image-2512-Lightning-4steps-V1.0.safetensors"
+  },
+  "character_image_edit_enabled": true
+}

@@ -1,0 +1,56 @@
+{
+  "version": "1.5",
+  "python": "venv/bin/python",
+  "runner": "runner.py",
+  "source": "source",
+  "checkpoint": "source/models/musetalkV15/unet.pth",
+  "unet_config": "source/models/musetalkV15/musetalk.json",
+  "vae": "source/models/sd-vae",
+  "whisper": "source/models/whisper",
+  "face_parse": "source/models/face-parse-bisent/79999_iter.pth",
+  "resnet": "source/models/face-parse-bisent/resnet18-5c106cde.pth",
+  "ffmpeg": "ffmpeg",
+  "device": "mps",
+  "revision": "895747b82968320282dc9e20245ca7ded81aa79d",
+  "environment_checked": false,
+  "weights_verified": false,
+  "validated": false,
+  "weight_files": [
+    {
+      "path": "source/models/musetalkV15/musetalk.json",
+      "size": 748
+    },
+    {
+      "path": "source/models/musetalkV15/unet.pth",
+      "size": 3400074924
+    },
+    {
+      "path": "source/models/sd-vae/config.json",
+      "size": 547
+    },
+    {
+      "path": "source/models/sd-vae/diffusion_pytorch_model.safetensors",
+      "size": 334643276
+    },
+    {
+      "path": "source/models/whisper/config.json",
+      "size": 1983
+    },
+    {
+      "path": "source/models/whisper/model.safetensors",
+      "size": 151061672
+    },
+    {
+      "path": "source/models/whisper/preprocessor_config.json",
+      "size": 184990
+    },
+    {
+      "path": "source/models/face-parse-bisent/resnet18-5c106cde.pth",
+      "size": 46827520
+    },
+    {
+      "path": "source/models/face-parse-bisent/79999_iter.pth",
+      "size": 53289463
+    }
+  ]
+}

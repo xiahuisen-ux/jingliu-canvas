@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>镜流 · AI 影视工作台</title>
+  <meta name="description" content="本地 AI 剧本、设定、分镜、关键帧、视频与质检工作台">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d1014'/%3E%3Cpath d='M13 19h38v27H13z' fill='none' stroke='%23e9a84a' stroke-width='4'/%3E%3Cpath d='M23 19l7 9 7-9m-18 27l13-12 13 12' fill='none' stroke='%23f4efe6' stroke-width='4'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/responsive.css"><link rel="stylesheet" href="/assets.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="rail">
+      <div class="brand"><span class="brand-mark">镜</span><div><strong>镜流</strong><small>AI 影视工作台</small></div></div>
+      <button class="new-project" id="newProject">＋ 新建项目</button>
+      <div class="rail-label">项目</div><div id="projectList" class="project-list"></div>
+      <div class="rail-footer"><span>本地模式</span><span class="privacy">素材不离开电脑</span></div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div><input id="projectTitle" class="project-title" value="未选择项目" disabled><div id="projectMeta" class="project-meta">创建项目后开始</div><div id="projectStorage" class="project-meta" style="overflow-wrap:anywhere"></div><button class="ghost" id="openProjectFolder" disabled>打开工程文件夹</button> <button class="ghost" id="openProjectTrash" disabled>该工程回收站</button></div>
+        <div class="top-actions"><a id="openCanvas" class="ghost" href="/" style="text-decoration:none">↗ 无限画布</a><button class="ghost" id="openTextModel">文字模型</button><button class="ghost" id="openChat">Qwen 对话</button><button class="ghost" id="openSettings">生成设置</button><button class="ghost stop-models" data-stop-models>■ 停止并释放模型</button><div id="servicePills" class="service-pills"></div><span id="runtimeMessage" class="runtime-message" aria-live="polite">模型按需启动</span></div>
+      </header>
+
+      <nav class="stagebar" id="stagebar">
+        <button data-stage="brief" class="active"><b>01</b><span>创作对话</span></button>
+        <button data-stage="script"><b>02</b><span>剧本</span></button>
+        <button data-stage="elements"><b>03</b><span>元素与参考图</span></button>
+        <button data-stage="storyboard"><b>04</b><span>视频任务</span></button>
+        <button data-stage="video"><b>05</b><span>视频与质检</span></button>
+        <button data-stage="lipsync"><b>06</b><span>视频口型校对</span></button>
+      </nav>
+
+      <section id="emptyState" class="empty-state">
+        <div class="empty-glyph">◫</div><h1>从一段想法开始</h1>
+        <p>描述故事、广告或短片需求。工作台会逐步整理设定、剧本、分镜、关键帧和视频。</p>
+        <button class="primary" onclick="document.getElementById('newProject').click()">新建第一个项目</button>
+      </section>
+
+      <div id="projectView" class="project-view hidden">
+        <section class="stage-panel active" data-panel="brief">
+          <div class="section-head"><div><span class="eyebrow">STORY ROOM · H3</span><h1>一起把故事聊成剧本</h1><p class="muted">先讨论剧情、对白和运镜，确认后导入 02 剧本。</p></div><button class="ghost" id="creativeModel">文字模型设置</button></div>
+          <div class="creative-layout">
+            <section class="creative-conversation" aria-label="创作对话">
+              <div class="creative-model-line"><span class="creative-dot"></span><strong id="creativeModelName">读取文字模型…</strong><small>H3 规范已接入</small></div>
+              <div id="creativeMessages" class="creative-messages" role="log" aria-label="本工程对话记录"></div>
+              <div class="creative-compose"><label for="creativeInput" class="sr-only">与编剧讨论</label><textarea id="creativeInput" rows="4" placeholder="说说你的故事，或者告诉我想修改的对白、动作和运镜…"></textarea><div class="creative-compose-actions"><small>⌘ / Ctrl + Enter 发送</small><button class="primary" id="creativeSend">发送</button></div></div>
+              <div class="creative-status-row"><span id="creativeStatus" role="status">讨论记录随工程保存</span><button class="ghost" id="creativeStop" hidden>停止</button></div>
+            </section>
+            <aside class="creative-draft"><div class="creative-draft-head"><span class="eyebrow">SCRIPT DRAFT</span><h2>剧本分镜草稿</h2><p class="muted">整理后可逐段查看；继续讨论再整理，会生成新草稿。</p></div><button class="ghost" id="creativeBuild">整理剧本分镜</button><div id="creativeDraftPreview"><p class="creative-placeholder">从一个想法开始。<br>聊好人物、故事和时长后，<br>在这里整理成完整分镜。</p></div><button class="primary" id="creativeImport" disabled>导入到 02 剧本</button><p id="creativeImportNote" class="muted">导入前可继续讨论修改；原剧本会保留历史。</p></aside>
+          </div>
+          <details class="creative-brief"><summary>原始需求与参考图片</summary>
+          <textarea id="briefInput" class="hero-input" placeholder="已有需求会在这里保留，可补充后保存。"></textarea>
+          <button class="ghost" id="creativeSaveBrief">保存原始需求</button>
+          <div class="upload-zone" id="uploadZone"><input type="file" id="fileInput" accept="image/*" multiple hidden><div class="upload-icon">↥</div><div><strong>人物、产品或场景参考图</strong><span>用于后续元素与视频；本页对话不会自动识图</span></div><button class="ghost" id="chooseFiles">选择图片</button></div><div id="uploads" class="upload-grid"></div><textarea id="analysisNotes" hidden></textarea>
+          </details>
+        </section>
+
+        <p id="textDataNotice" class="muted" role="status">正在读取文字模型模式…</p>
+        <section class="stage-panel" data-panel="elements">
+          <div class="section-head"><div><span class="eyebrow">CONTINUITY BIBLE</span><h1>人物与场景</h1></div><div class="toolbar"><button class="ghost" data-stage-jump="script">返回修改剧本</button><button class="ghost" data-action="analyze">从剧本提取</button><button class="primary" data-action="all_assets">依次生成缺失元素参考图</button></div></div>
+          <p class="muted">描述人物，添加可选参考图，然后开始生成。</p>
+          <details class="element-story-summary"><summary>查看剧本设定</summary><div id="analysisSummary" class="summary-strip"></div></details>
+          <div id="openingFramesPanel"></div>
+          <div id="entitySections"></div>
+          <p class="muted">元素文字与参考图独立：可以先建立文字视频任务，参考图按需上传或生成。不同角度和多人物不保证身份完全一致。</p>
+          <div class="action-row"><textarea id="storyNotes" placeholder="分镜要求：节奏、镜头安排、人物使用的物品、必须保留的画面"></textarea><button class="primary wide" data-action="storyboard">按设置时长拆分任务 <span>→</span></button></div>
+        </section>
+
+        <section class="stage-panel" data-panel="script">
+          <div class="section-head"><div><span class="eyebrow">SCREENPLAY · STORY & CAMERA</span><h1>剧本工作区</h1><p class="muted">整片一起讨论，确认后统一修改。</p></div><span id="scriptWorkspaceSummary" class="script-summary"></span></div>
+          <div class="screenplay-layout">
+            <section class="screenplay-document" aria-label="剧本与分镜编辑">
+              <div class="screenplay-panel-head"><div><h2>剧本与分镜</h2><small>中文在前 · 英文集中在最后</small></div><button class="ghost" id="saveScript">保存修改</button></div>
+              <div class="screenplay-editor-tools"><span id="scriptEditState" role="status">已保存</span><div><button class="ghost" id="scriptJumpEnglish">跳到英文 ↓</button><button class="ghost" id="scriptReload">重新读取</button></div></div>
+              <textarea id="scriptDocument" spellcheck="false" aria-label="整片剧本与分镜" placeholder="请先从 01 创作对话导入剧本。"></textarea>
+              <textarea id="scriptEditor" hidden></textarea><textarea id="scriptNotes" hidden></textarea><div id="scriptPreview" hidden></div>
+              <div class="screenplay-footer"><p>直接修改正文，请保留【分区标题】。需要重排段落时，可在右侧讨论。</p><div class="screenplay-exports"><button class="ghost" id="scriptExtract">提取元素与参考图 →</button><button class="primary" id="scriptExport">输出到 04 视频任务 →</button></div><small id="scriptExportNote">提取后进入 03 选择或生成参考图；输出任务后手动生成视频。</small></div>
+            </section>
+            <aside class="screenplay-assistant" aria-label="DeepSeek 整片剧本对话">
+              <div class="screenplay-panel-head"><div><h2><span class="creative-dot"></span> DeepSeek · 整片讨论</h2><small id="scriptModelName">读取模型…</small></div><button class="ghost" id="scriptModelSettings">模型设置</button></div>
+              <p class="screenplay-context">读取左侧当前剧本，讨论剧情、表演与运镜。生成待确认稿时，同步整理 H3 英文。</p>
+              <div id="scriptMessages" class="screenplay-messages" role="log" aria-label="整片讨论记录"></div>
+              <div class="screenplay-proposal" id="scriptProposal" hidden><div><strong>待确认稿</strong><small id="scriptProposalSummary"></small></div><button class="ghost" id="scriptPreviewDraft">预览并确认</button><p id="scriptProposalNote"></p></div>
+              <div class="creative-compose"><textarea id="scriptChatInput" aria-label="整片改稿要求" placeholder="例如：第二段改为侧后方过肩推进，衔接第三段的表情，保持原对白和时长。"></textarea><div class="creative-compose-actions"><small>⌘ / Ctrl + Enter 发送</small><button class="primary" id="scriptSend">发送讨论</button></div></div>
+              <div class="screenplay-draft-actions"><button class="ghost" id="scriptBuildDraft">生成待确认稿 · 含英文</button><small>先预览，确认后才更新左侧</small></div>
+              <p id="scriptChatStatus" class="screenplay-status" role="status">视频生成期间可讨论；保存与应用整片修改需等待生成结束。</p>
+            </aside>
+          </div>
+          <p class="muted" id="taskPlanHint"></p>
+        </section>
+
+        <section class="stage-panel" data-panel="storyboard">
+          <div class="section-head"><div><span class="eyebrow">SHOT BOARD</span><h1>视频任务 · 文字与调用元素</h1></div><div class="toolbar"><button class="ghost" data-action="storyboard">重新拆分</button><button class="primary" data-action="render_sequence">依次生成所选段落</button></div></div>
+          <p class="muted">按每段选择的模式和素材依次生成视频（每段 5–15 秒），可选上传首尾帧或使用全能参考素材；第二段起可按模式引用上一段实际尾帧，换场可关闭。勾选哪些段落就生成哪些；重复生成会新增版本，旧视频保留；可随时停止。</p>
+          <details class="muted"><summary>已启用 MiniMax 官方 H3 提示词 SKILL · AI 分镜自动遵循</summary><p>新 AI 分镜：英文三段提示词，单段一个连续镜头；对白保留原文。后端校验字段与顺序，不合规自动纠正一次，仍失败则不保存。生成视频时按实际选图转为 Ref2VA 六段格式。旧镜头及已写好时序的剧本直接拆分不自动改写；本功能校验结构，不保证内容或画面质量。</p><p><a href="/h3-prompt-writing/SKILL.md" target="_blank" rel="noopener">查看官方 SKILL 原文</a> · <a href="/h3-prompt-writing/references/base-en.txt" target="_blank" rel="noopener">三段格式指南</a> · <a href="/h3-prompt-writing/references/ref-en.txt" target="_blank" rel="noopener">六段参考图指南</a> · <a href="https://github.com/MiniMax-AI/MiniMax-H3/tree/d21241f0a4b3acbb34c97dae47fa417b7065e438/skills/h3-prompt-writing" target="_blank" rel="noopener">官方固定版本来源</a></p></details>
+          <div class="generation-picker" data-generation-picker></div>
+          <div id="tailRepairPanel"></div>
+          <div id="shotsGrid" class="shots-grid"></div>
+        </section>
+
+        <section class="stage-panel" data-panel="video">
+          <div class="section-head"><div><span class="eyebrow">ASSEMBLY & REVIEW</span><h1>视频版本与合成</h1></div><div class="toolbar"><button class="ghost" data-action="render_sequence">依次生成所选段落</button><button class="primary" data-action="assemble">合成所选视频</button></div></div>
+          <div class="generation-picker" data-generation-picker></div>
+          <p class="muted">每段选择一个版本，勾选“参与合成”后点击“合成所选视频”。按段号排列，保留所选视频的原声和实际时长。合成选版不改变后续生成的尾帧参考；后续生成仍使用最新生成版本。</p>
+          <div id="colorMatchPanel"></div>
+          <div id="finalCut"></div>
+          <div id="videoTimeline" class="video-timeline"></div>
+        </section>
+        <section class="stage-panel" data-panel="lipsync">
+          <div class="section-head"><div><span class="eyebrow">LIP SYNC · REVIEW & REPAIR</span><h1>视频口型校对</h1><p class="muted">逐帧检查、调整配音时序，再用 MuseTalk 1.5 重做嘴型。</p></div><button class="ghost" id="lipRefresh">刷新素材</button></div>
+          <div id="lipNoProject" class="muted">先打开一个工程。</div>
+          <div id="lipWorkspace" hidden>
+            <div class="lip-source-row"><label>校对视频<select id="lipVideoSource" aria-label="校对视频"></select></label><button class="ghost" id="lipUploadVideo">上传视频</button><label>目标配音<select id="lipAudioSource" aria-label="目标配音"></select></label><button class="ghost" id="lipUploadAudio">上传配音</button><input id="lipVideoFile" type="file" accept="video/*,.mkv" hidden><input id="lipAudioFile" type="file" accept="audio/*" hidden></div>
+            <div class="lip-layout">
+              <div class="lip-preview"><video id="lipPlayer" controls playsinline preload="metadata"></video><audio id="lipAudio" preload="metadata" hidden></audio>
+                <div class="lip-roi-tools"><button class="ghost" id="lipSelectRegion">圈选说话人物</button><button class="ghost" id="lipClearRegion">自动检测单人</button><span class="muted" id="lipRegionNote">自动检测；多人画面请圈选说话人物。</span></div><canvas id="lipRegionCanvas" hidden aria-label="拖动圈选说话人物区域"></canvas><p id="lipRegionHelp" class="muted" hidden>在此帧上拖动圈选：包含完整脸部和下巴，留出头部移动空间。区域作用于整段。</p>
+                <div class="lip-transport"><button class="ghost" id="lipPrevious">← 上一帧</button><button class="primary" id="lipPlay">播放 / 暂停</button><button class="ghost" id="lipNext">下一帧 →</button><select id="lipSpeed" aria-label="播放速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option></select><output id="lipTime">0.000 / 0.000 秒</output></div>
+                <div class="lip-scrub"><input id="lipSeek" type="range" min="0" max="0" step="0.001" value="0" aria-label="视频时间线"></div>
+                <div class="lip-marker-compose"><input id="lipNote" placeholder="在当前时间标记：例如，张口比声音晚两帧" maxlength="2000" aria-label="校对备注"><button class="ghost" id="lipAddMark">＋ 标记当前帧</button></div><div id="lipMarkers" class="lip-markers"></div><button class="ghost" id="lipSaveReview">保存校对标记与偏移</button>
+              </div>
+              <aside class="lip-controls">
+                <h2>配音时序</h2><label>声音偏移（毫秒）<input id="lipOffset" type="number" min="-5000" max="5000" step="1" value="0"></label><input id="lipOffsetRange" type="range" min="-2000" max="2000" step="1" value="0" aria-label="声音偏移滑块"><p class="muted">负值让声音提前，正值让声音延后。调节后可播放试听；导出保留完整画面时长，音频不足处补静音。</p><div class="lip-nudges"><button class="ghost" data-lip-nudge="-1">声音提前一帧</button><button class="ghost" data-lip-nudge="1">声音延后一帧</button><button class="ghost" id="lipReset">归零</button></div><p class="muted" id="lipFrameRate">读取视频帧率…</p><button class="primary" id="lipExport">导出音轨同步版</button>
+                <div class="lip-ai"><span class="eyebrow">MUSETALK 1.5</span><h2>AI 重做嘴型</h2><p id="lipBackend" class="muted" role="status">正在检查运行环境…</p><label>处理批量<input id="lipBatch" type="number" min="1" max="8" step="1" value="4"></label><label>下巴额外边距（像素）<input id="lipMargin" type="number" min="0" max="40" step="1" value="10"></label><button class="primary" id="lipGenerate" disabled>用 MuseTalk 1.5 生成新版本</button><p class="muted">使用上方视频与偏移后的配音。适合清晰、单人、面部无遮挡的镜头；多人、卡通、侧脸需要检查结果。</p></div>
+                <p id="lipStatus" class="muted" role="status"></p>
+              </aside>
+            </div>
+            <div class="section-head lip-results-head"><div><span class="eyebrow">TAKES</span><h2>校对结果与原片对比</h2><p class="muted">每次处理另存新视频。段落结果也会出现在 05，选用后可手动合成。</p></div></div><div id="lipResults" class="lip-results"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside class="inspector">
+      <div class="inspector-head"><span>项目监督</span><span id="saveState">已保存</span></div>
+      <div id="jobCard" class="job-card hidden"><div class="job-top"><strong id="jobTitle">模型处理中</strong><span id="jobPercent">0%</span></div><div class="progress"><i id="jobProgress"></i></div><p id="jobMessage"></p><button class="ghost stop-models" data-stop-models>■ 停止并释放模型</button></div>
+      <div class="inspector-section"><h3>制作进度</h3><div id="progressList" class="progress-list"></div></div>
+      <div class="inspector-section"><h3>连续性锁定</h3><div id="continuityList" class="continuity-list"><p class="muted">分析需求后显示人物与关键物品。</p></div></div>
+      <div class="inspector-note"><strong>建议</strong><p id="contextTip">先写清时长、画幅、人物、场景和最终用途，后续结果会更稳定。</p></div>
+    </aside>
+  </div>
+
+  <dialog id="newDialog"><form method="dialog"><div class="dialog-head"><h2>新建影视项目</h2><button value="cancel">×</button></div><label>项目名称<input id="newTitle" placeholder="例如：雨夜来信"></label><label>初始想法<textarea id="newBrief" placeholder="先写一句话也可以，创建后继续完善。"></textarea></label><div class="dialog-actions"><button value="cancel" class="ghost">取消</button><button id="createProject" value="default" class="primary">创建项目</button></div></form></dialog>
+
+  <dialog id="settingsDialog" class="settings-dialog"><form method="dialog"><div class="dialog-head"><div><span class="eyebrow">GENERATION SETTINGS</span><h2>生成质量设置</h2></div><button value="cancel" aria-label="关闭">×</button></div>
+    <div class="settings-grid">
+      <section><h3>Qwen-Image 图片</h3><label>参考四视图边长<select id="referenceSize"><option value="512">512 · 快速</option><option value="768">768 · 推荐</option><option value="1024">1024 · 高清</option></select></label><label>关键帧预设<select id="imagePreset"><option value="384x672">384 × 672 · 快速竖屏</option><option value="576x1024">576 × 1024 · 标准竖屏</option><option value="768x1344">768 × 1344 · 高清竖屏</option><option value="1024x576">1024 × 576 · 标准横屏</option><option value="1344x768">1344 × 768 · 高清横屏</option><option value="768x768">768 × 768 · 方形</option><option value="custom">自定义</option></select></label><div class="size-row"><label>宽度<input id="imageWidth" type="number" min="384" max="1536" step="16"></label><label>高度<input id="imageHeight" type="number" min="384" max="1536" step="16"></label></div><label>采样步数<select id="imageSteps"><option value="4">4 · Lightning 推荐</option><option value="6">6 · 实验</option><option value="8">8 · 实验</option><option value="12">12 · 实验</option></select></label><p class="settings-warning">当前使用 4 步 Lightning；增加步数会更慢，画质不一定更好。</p></section>
+      <section><h3>MiniMax H3 视频</h3><label>默认视频时长（秒）<input id="videoDuration" type="number" min="5" max="15" step="1" value="10" required></label><p class="settings-warning">用于新拆分的任务，默认 10 秒，范围 5–15 秒。已有任务可在镜头卡片单独调整；不会自动修改已有作品。较长视频耗时和内存占用更高。</p><label>输出尺寸预设<select id="videoPreset"><option value="352x608">352 × 608 · 快速竖屏</option><option value="480x832">480 × 832 · 标准竖屏</option><option value="576x1024">576 × 1024 · 高清竖屏</option><option value="512x288">512 × 288 · 快速横屏</option><option value="832x480">832 × 480 · 标准横屏</option><option value="448x448">448 × 448 · 方形</option><option value="custom">自定义</option></select></label><div class="size-row"><label>宽度<input id="videoWidth" type="number" min="256" max="1344" step="32"></label><label>高度<input id="videoHeight" type="number" min="256" max="1344" step="32"></label></div><p class="settings-warning">固定 24fps，宽高为 32 的倍数。高清选项尚未整片实测，耗时和内存占用更高；64GB 机器建议从快速尺寸开始，采样步数在 h3.c 设置中调整。</p></section>
+    </div><p class="settings-warning">设置用于下一批生成，已有作品不变。这里调整输出尺寸和采样步数，不改变模型权重精度。当前图片模型以面板标题为准；视频仅使用 h3.c Metal 原生权重；ComfyUI 只为图片生成服务。</p><div class="memory-policy"><strong>内存策略已启用</strong><span>工作台任务串行执行；同批图片复用模型；切换图片/视频模型时自动释放上一模型。</span></div><div class="dialog-actions"><button value="cancel" class="ghost">取消</button><button id="saveSettings" value="default" class="primary">保存设置</button></div>
+  </form></dialog>
+
+  <dialog id="chatDialog" class="chat-dialog"><div class="dialog-head"><div><span class="eyebrow">GENERAL ASSISTANT · 离线模式 / 未联网</span><h2>Qwen 3.8 通用对话</h2></div><button id="closeChat" aria-label="关闭">×</button></div><div id="chatMessages" class="chat-messages"><div class="chat-empty">可以问写作、知识解释、方案分析、代码或日常问题。</div></div><p id="chatProgress" class="chat-note" aria-live="polite"></p><div class="chat-compose"><textarea id="chatInput" placeholder="输入问题；⌘ + Enter 发送"></textarea><div><button class="ghost" id="clearChat">清空</button><button class="primary" id="sendChat">发送</button><button class="ghost stop-models" data-stop-models>■ 停止并释放模型</button></div></div><p class="chat-note">聊天时关闭生图和视频服务；Qwen 空闲 60 秒后释放，切换生成任务立即释放。未接入搜索，无法检索最新资料或剧照。首次加载模型需要读取 SSD。</p></dialog>
+  <dialog id="imagePreview" class="image-preview-dialog"><div class="dialog-head"><h2 id="previewTitle">图片预览</h2><button id="closePreview" aria-label="关闭图片预览">×</button></div><img id="previewImage" alt="图片预览"><code id="previewPath"></code><div class="dialog-actions"><button class="ghost" id="revealPreview">在 Finder 中显示</button><a class="primary" id="downloadImage" download>下载原图</a></div></dialog>
+  <div id="toast" class="toast"></div>
+  <dialog id="scriptDraftDialog" class="screenplay-draft-dialog"><div class="dialog-head"><div><span class="eyebrow">REVIEW BEFORE APPLYING</span><h2>确认整片修改</h2></div><button id="scriptCloseDraft" aria-label="关闭待确认稿">×</button></div><p id="scriptDraftNotice" class="muted"></p><pre id="scriptDraftText"></pre><div class="dialog-actions"><button class="ghost" id="scriptKeepDiscussing">继续讨论</button><button class="primary" id="scriptApplyDraft">确认应用到左侧剧本</button></div></dialog>
+  <link rel="stylesheet" href="/script-workspace.css"><script src="/script-workspace.js"></script>
+  <link rel="stylesheet" href="/progress.css">
+  <link rel="stylesheet" href="/video-backends.css">
+  <link rel="stylesheet" href="/ui-stability.css">
+  <link rel="stylesheet" href="/video-choices.css">
+  <script src="/video-choices.js"></script>
+  <link rel="stylesheet" href="/video-color.css">
+  <link rel="stylesheet" href="/video-lipsync.css"><script src="/video-lipsync.js?v=20261021"></script>
+  <script src="/video-color.js"></script>
+  <link rel="stylesheet" href="/tail-repair.css">
+  <script src="/tail-repair.js"></script>
+  <link rel="stylesheet" href="/opening-frames.css"><script src="/opening-frames.js"></script>
+  <script src="/ui-stability.js"></script>
+  <script src="/progress.js"></script><script src="/asset-plan.js"></script><script src="/assets.js"></script><script src="/shot-modes.js"></script><script src="/video-backends.js?v=20261021d"></script><script src="/shot-references.js"></script><script src="/text-shots.js"></script><script src="/h3-translation.js"></script><script src="/video-delete.js"></script><script src="/video-enhance.js"></script><script src="/text-models.js?v=20261021"></script><script src="/character-states.js"></script><link rel="stylesheet" href="/creative-chat.css"><script src="/creative-chat.js"></script><link rel="stylesheet" href="/shot-workspace.css"><script src="/shot-chat.js"></script><script src="/app.js?v=20261021d"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+Official source: https://github.com/MiniMax-AI/MiniMax-H3/tree/d21241f0a4b3acbb34c97dae47fa417b7065e438/skills/h3-prompt-writing
+Pinned commit: d21241f0a4b3acbb34c97dae47fa417b7065e438
+Files: SKILL.md, references/base-en.txt, references/ref-en.txt
+The three files are unmodified upstream text. No remote code or install script is executed.
+Workbench adaptation is separate: h3_prompt_skill.py.
+Planning uses base T2VA fields before references are final; rendering constructs Ref2VA sections from the actual ordered images.
+The adapter validates structure, not semantic correctness or video quality. Existing authored prompts are not silently migrated.
